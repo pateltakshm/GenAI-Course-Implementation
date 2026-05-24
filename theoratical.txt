@@ -1,0 +1,1768 @@
+============================================================
+THEORETICAL NOTES - GenAI / NLP Concepts
+============================================================
+
+------------------------------------------------------------
+1. WHAT ARE SUB AGENTS?
+------------------------------------------------------------
+
+Sub agents are specialized AI instances that a primary agent can spawn
+to handle specific subtasks in parallel or sequentially.
+
+Key characteristics:
+- Independent context: each sub agent starts fresh with only the prompt
+  given to it, no memory of the parent conversation
+- Specialized roles: different agent types have different tools and expertise
+  (e.g., Explore for code search, Plan for architecture)
+- Parallel execution: multiple sub agents can run simultaneously on
+  independent tasks, saving time
+- Scoped results: they return a single result back to the parent, which
+  then synthesizes and responds to the user
+
+When they are useful:
+- Parallelizing independent research tasks
+- Protecting context — offloading large searches so raw results don't
+  flood the main conversation window
+- Specialization — routing to an agent with domain-specific tools
+
+Example flow:
+  User → Claude Code (parent)
+           ├── spawns Explore agent → searches codebase → returns findings
+           ├── spawns Plan agent   → designs architecture → returns plan
+           └── synthesizes both   → responds to user
+
+
+------------------------------------------------------------
+2. WHAT DOES "CORPUS" MEAN IN NLP?
+------------------------------------------------------------
+
+A corpus is simply a collection of text documents — it is the raw
+dataset itself, not a specific count of words.
+
+Example:
+  corpus = ["The cat sat.", "The dog ran.", "A cat ran."]
+
+It is just the full body of text you are working with.
+
+Related terms (commonly confused with corpus):
+
+  Term          | Meaning                          | Example (from above)
+  --------------|----------------------------------|----------------------
+  Corpus        | Full collection of text          | All 3 sentences
+  Vocabulary    | Unique words across the corpus   | {the, cat, sat, dog, ran, a} = 6
+  Tokens        | Total word count (with repeats)  | 10 tokens
+  Bigrams/Pairs | Unique adjacent word pairs       | (the, cat), (cat, sat), etc.
+
+In short:
+- Corpus    = the whole text collection (documents, sentences, etc.)
+- Vocabulary = unique words extracted from the corpus
+- Token count = total words including duplicates
+
+The word "pairs" refers to n-grams (bigrams = 2-word pairs), which are
+computed from the corpus but are not the corpus itself.
+
+
+------------------------------------------------------------
+3. WHY IS HANDLING SPARSE MATRICES VERY HARD IN NLP?
+------------------------------------------------------------
+
+What makes them sparse?
+  When you represent text as vectors (e.g., Bag of Words, TF-IDF),
+  each word in the vocabulary becomes a dimension.
+
+  Vocabulary: [cat, dog, run, eat, sleep, fly, ... 50,000 words]
+  Sentence: "The cat sat"
+  Vector:   [1, 0, 0, 0, 0, 0, ... 0]  ← 49,997 zeros, 1 non-zero
+
+  A real corpus vocabulary can have 50,000–500,000+ words, so most
+  values are zero — that is sparsity.
+
+Why it is hard:
+
+  1. Memory explosion
+     10,000 documents × 100,000 vocab = 1 billion cells
+     At 4 bytes each = ~4 GB just to store zeros
+
+  2. Computation is slow
+     - Matrix multiplications on mostly-zero matrices waste cycles
+       on 0 × anything = 0
+     - Most ML algorithms were not designed for this
+
+  3. Curse of dimensionality
+     - High dimensions make distance metrics (cosine, euclidean) less meaningful
+     - Models need exponentially more data to generalize
+
+  4. No semantic meaning
+     - "king" and "monarch" are completely unrelated in a sparse matrix
+       — they share no dimensions
+     - Sparsity captures frequency, not meaning
+
+How NLP solves this:
+
+  Problem              | Solution
+  ---------------------|--------------------------------------------------
+  Memory               | Sparse matrix formats (CSR, COO) — store only
+                       | non-zero values
+  Semantics +          | Word embeddings (Word2Vec, GloVe) — dense
+  dimensionality       | 100–300d vectors
+  Both                 | Transformers — learn dense contextual representations
+
+Core insight:
+  Dense embeddings (e.g., [0.23, -0.81, 0.44, ...] in 300 dims) pack
+  more meaning into far fewer dimensions than sparse 100,000-dim vectors.
+
+
+------------------------------------------------------------
+4. WHAT IS BAG OF WORDS (BoW)?
+------------------------------------------------------------
+
+Bag of Words is one of the simplest ways to convert text into numbers
+so that ML models can understand it.
+
+Core idea:
+  - Build a vocabulary of all unique words in the corpus
+  - Represent each document as a vector of word counts
+  - The "bag" ignores word order — only frequency matters
+
+Example:
+  Vocabulary: [cat, sat, the, mat, dog, ran]
+
+  Sentence 1: "the cat sat"   → [1, 1, 1, 0, 0, 0]
+  Sentence 2: "the dog ran"   → [0, 0, 1, 0, 1, 1]
+  Sentence 3: "cat sat mat"   → [1, 1, 0, 1, 0, 0]
+
+How it works step by step:
+  1. Collect all documents (corpus)
+  2. Tokenize (split into words)
+  3. Build vocabulary (unique words)
+  4. For each document, count how many times each vocab word appears
+  5. That count vector IS the document representation
+
+Pros of Bag of Words:
+  + Very simple to understand and implement
+  + Works well for small datasets and simple classification tasks
+  + Interpretable — you can see exactly which words drive predictions
+  + Fast to compute
+  + No training required (just counting)
+
+Cons of Bag of Words:
+  - Loses word order ("dog bites man" = "man bites dog")
+  - No semantic meaning ("good" and "great" are treated as unrelated)
+  - Sparse and high-dimensional (same problem as sparse matrices)
+  - Common words like "the", "is", "a" dominate and add noise
+  - Vocabulary grows huge with large corpora
+  - Cannot handle unseen words (out-of-vocabulary problem)
+
+When to use BoW:
+  - Baseline models / quick prototypes
+  - Small datasets where simplicity beats complexity
+  - When interpretability is more important than accuracy
+  - Text classification on well-defined, narrow domains
+
+When NOT to use BoW:
+  - When context and word order matter (sentiment, QA, translation)
+  - Large-scale NLP tasks (too sparse and memory-heavy)
+  - When semantic similarity between words matters
+  - Any modern production NLP system — embeddings do it better
+
+
+------------------------------------------------------------
+5. WHAT IS TF-IDF?
+------------------------------------------------------------
+
+TF-IDF stands for Term Frequency - Inverse Document Frequency.
+It is an improvement over Bag of Words that weighs words by how
+important they are, not just how often they appear.
+
+The core problem it solves:
+  In BoW, common words like "the", "is", "a" appear in almost every
+  document and get high counts — but they carry no useful information.
+  TF-IDF penalizes these common words and rewards rare, informative ones.
+
+Formula:
+  TF-IDF(word, document) = TF(word, document) × IDF(word)
+
+  TF (Term Frequency):
+    How often the word appears in THIS document (normalized)
+    TF = (count of word in document) / (total words in document)
+
+  IDF (Inverse Document Frequency):
+    How rare the word is across ALL documents
+    IDF = log(total documents / number of documents containing the word)
+
+  High TF-IDF → word is frequent in this doc but rare across corpus
+                 → it is likely an important/unique word for this doc
+
+Example:
+  Corpus: 1000 news articles
+  Word "the"   → appears in all 1000 docs → IDF ≈ 0 → TF-IDF ≈ 0
+  Word "bitcoin" → appears in 10 docs     → IDF = log(1000/10) = 2
+                                           → gets a high TF-IDF score
+
+  So "bitcoin" in a finance article gets a high score, "the" gets near zero.
+
+Pros of TF-IDF:
+  + Better than BoW — filters out meaningless common words
+  + Still simple and fast to compute
+  + No training needed (purely statistical)
+  + Works well for information retrieval (search engines)
+  + Good for document similarity and keyword extraction
+  + Interpretable — scores show which words define each document
+
+Cons of TF-IDF:
+  - Still sparse and high-dimensional (same memory issues as BoW)
+  - Still loses word order ("not good" and "good" treated similarly)
+  - No semantic understanding ("happy" and "joyful" are unrelated)
+  - IDF is static — computed once, does not adapt to context
+  - Fails on short texts (less reliable frequency statistics)
+  - Cannot handle synonyms, polysemy (words with multiple meanings)
+  - Out-of-vocabulary problem — unseen words get no score
+
+Why we DON'T use TF-IDF (in modern NLP):
+  - Word embeddings (Word2Vec, GloVe) capture semantic meaning TF-IDF cannot
+  - Transformer models (BERT, GPT) understand context, order, and nuance
+  - TF-IDF treats each word independently — no understanding of phrases
+  - Modern models outperform TF-IDF on almost every NLP benchmark
+  - Dense embeddings are far more memory-efficient at scale
+
+Why we STILL use TF-IDF (and when it makes sense):
+  - Search engines and document retrieval (BM25 is TF-IDF based — used by
+    Elasticsearch, Google's early ranking, etc.)
+  - Keyword extraction — quickly find the most important words in a document
+  - Feature engineering — combine TF-IDF with ML models (SVM, Logistic Reg)
+    as a fast baseline
+  - Very large corpora where training deep models is too expensive
+  - When you need full interpretability (legal, medical, compliance domains)
+  - RAG pipelines sometimes use TF-IDF for sparse retrieval alongside
+    dense vector search (hybrid search)
+
+Summary — BoW vs TF-IDF vs Embeddings:
+
+  Method       | Captures Frequency | Weighs Importance | Captures Meaning | Speed
+  -------------|-------------------|-------------------|------------------|-------
+  BoW          | Yes               | No                | No               | Fastest
+  TF-IDF       | Yes               | Yes               | No               | Fast
+  Word2Vec     | No                | No                | Partial          | Medium
+  Transformers | No                | Yes (contextual)  | Yes              | Slow
+
+Bottom line:
+  Use TF-IDF when you need a fast, interpretable, training-free baseline
+  or for search/retrieval tasks. For anything requiring deep understanding
+  of language — sentiment, QA, summarization, translation — use embeddings
+  or transformer-based models.
+
+
+------------------------------------------------------------
+6. TEXT PREPROCESSING
+------------------------------------------------------------
+
+Before any NLP model can learn from text, raw text must be cleaned
+and transformed into a usable format. This pipeline is called
+text preprocessing.
+
+Why it matters:
+  Raw text is messy — punctuation, HTML tags, emojis, inconsistent
+  casing, and irrelevant filler words all add noise. Preprocessing
+  reduces this noise so models focus on signal.
+
+Step-by-step preprocessing pipeline:
+
+  1. Lowercasing
+     "Cat" and "cat" should be the same word.
+     "The CAT sat" → "the cat sat"
+
+  2. Removing noise
+     - HTML tags: <b>hello</b> → hello
+     - URLs: "visit http://example.com" → "visit"
+     - Special characters and punctuation: "hello!!!" → "hello"
+     - Numbers (sometimes): "I have 3 cats" → "I have cats"
+     - Emojis (task-dependent)
+
+  3. Tokenization
+     Splitting text into individual units (tokens).
+     "the cat sat on the mat" → ["the","cat","sat","on","the","mat"]
+     (Covered in depth in Section 10)
+
+  4. Stopword Removal
+     Stop words are extremely common words that carry little meaning.
+     Examples: the, is, at, which, on, a, an, in, it, to, for
+
+     "the cat sat on the mat" → ["cat", "sat", "mat"]
+
+     When to remove:
+       - BoW / TF-IDF pipelines (they dominate frequency counts)
+       - Topic modeling, keyword extraction
+
+     When NOT to remove:
+       - Sentiment analysis ("not good" → removing "not" flips meaning)
+       - Transformers (they handle stop words naturally via attention)
+       - Any task where word order and small words carry meaning
+
+  5. Stemming
+     Chops word endings using rules — fast but crude.
+     running → run
+     studies → studi  (not a real word!)
+     better  → better (fails)
+
+     Algorithm: Porter Stemmer, Snowball Stemmer
+     Problem: Often produces non-words (over-stemming/under-stemming)
+
+  6. Lemmatization
+     Reduces word to its dictionary base form (lemma) using vocabulary
+     and grammar rules — slower but accurate.
+     running → run
+     studies → study
+     better  → good   (knows "better" is comparative of "good")
+     was     → be
+
+     Requires Part-of-Speech (POS) tagging to work correctly.
+     Library: spaCy, NLTK WordNetLemmatizer
+
+  Stemming vs Lemmatization:
+    Feature       | Stemming          | Lemmatization
+    --------------|-------------------|------------------
+    Speed         | Fast              | Slower
+    Accuracy      | Low (crude rules) | High (dictionary)
+    Output        | May not be a word | Always a real word
+    Context-aware | No                | Yes (uses POS)
+    Use case      | Search engines    | NLP models, QA
+
+  7. Part-of-Speech (POS) Tagging
+     Labels each word with its grammatical role.
+     "The cat sat" → [("The", DET), ("cat", NOUN), ("sat", VERB)]
+
+  8. Named Entity Recognition (NER)
+     Identifies and classifies named entities in text.
+     "Elon Musk founded SpaceX in 2002 in California"
+     → Elon Musk: PERSON, SpaceX: ORG, 2002: DATE, California: LOC
+
+  9. Text Normalization
+     - Expanding contractions: "don't" → "do not"
+     - Correcting spelling: "definately" → "definitely"
+     - Handling abbreviations: "Dr." → "Doctor"
+
+Full pipeline example:
+  Raw:       "The CATS are running quickly!!! Visit http://cats.com"
+  Lower:     "the cats are running quickly!!! visit http://cats.com"
+  Clean:     "the cats are running quickly visit"
+  Tokenize:  ["the", "cats", "are", "running", "quickly", "visit"]
+  Stopwords: ["cats", "running", "quickly", "visit"]
+  Lemma:     ["cat", "run", "quickly", "visit"]
+
+
+------------------------------------------------------------
+7. WORD EMBEDDINGS — Word2Vec, GloVe, FastText
+------------------------------------------------------------
+
+The fundamental problem with BoW and TF-IDF is that words are treated
+as isolated symbols with no relationship to each other. Word embeddings
+solve this by representing each word as a dense vector in a continuous
+space where similar words are geometrically close.
+
+Core idea:
+  "You shall know a word by the company it keeps." — J.R. Firth
+
+  Words that appear in similar contexts have similar meanings.
+  So we learn vectors by predicting context.
+
+What an embedding looks like:
+  king   → [0.50,  0.23, -0.81,  0.14, ...]  (300 dimensions)
+  queen  → [0.48,  0.25, -0.79,  0.12, ...]  (very close to king)
+  apple  → [-0.32, 0.91,  0.44, -0.60, ...]  (far from king)
+
+Famous property:
+  king - man + woman ≈ queen   (vector arithmetic captures relationships)
+  Paris - France + Italy ≈ Rome
+
+----- WORD2VEC -----
+
+Developed by Google (Mikolov et al., 2013). A shallow neural network
+trained to predict words from context or context from words.
+
+Two architectures:
+
+  1. CBOW (Continuous Bag of Words)
+     Predict the CENTER word given surrounding context words.
+     Context: ["the", "sat", "on", "mat"] → Predict: "cat"
+     - Faster to train
+     - Better for frequent words
+     - Averages context → loses some info
+
+  2. Skip-gram
+     Predict SURROUNDING context words given the center word.
+     Center: "cat" → Predict: ["the", "sat", "on", "mat"]
+     - Slower to train
+     - Better for rare words
+     - More computationally expensive
+     - Generally produces higher quality embeddings
+
+Training trick — Negative Sampling:
+  Instead of computing probabilities over all 50,000 vocab words
+  (expensive), sample a few "negative" (wrong) words and train
+  the model to score them lower than the correct word.
+
+Word2Vec pros:
+  + Captures semantic and syntactic relationships
+  + Dense vectors (300d vs 50,000d sparse)
+  + Fast inference once trained
+  + Transferable — train once, use everywhere
+
+Word2Vec cons:
+  - Each word has ONE fixed vector regardless of context
+    ("bank" = river bank and financial bank → same vector)
+  - Cannot handle out-of-vocabulary words
+  - Requires large corpus to train well
+  - Does not capture subword information (morphology)
+
+----- GloVe (Global Vectors) -----
+
+Developed by Stanford (Pennington et al., 2014).
+Instead of local context windows (like Word2Vec), GloVe uses
+global word co-occurrence statistics across the entire corpus.
+
+How it works:
+  1. Build a co-occurrence matrix X where X[i][j] = how often
+     word i appears near word j across the full corpus
+  2. Train vectors so that: word_i · word_j ≈ log(X[i][j])
+  3. The dot product of two word vectors should approximate
+     the log of how often they co-occur
+
+GloVe vs Word2Vec:
+  Feature          | Word2Vec         | GloVe
+  -----------------|------------------|------------------
+  Training         | Local context    | Global co-occurrence
+  Speed            | Faster           | Slower (matrix build)
+  Performance      | Slightly lower   | Slightly higher on analogy tasks
+  Interpretability | Lower            | Higher (direct statistical)
+
+----- FastText -----
+
+Developed by Facebook (Bojanowski et al., 2017).
+Extension of Word2Vec that represents each word as a bag of
+character n-grams (subwords).
+
+"eating" → ["eat", "ati", "tin", "ing", "<ea", "ng>", ...]
+The word vector = sum of its subword vectors.
+
+FastText pros:
+  + Handles out-of-vocabulary words (can build vector from subwords)
+  + Better for morphologically rich languages (German, Finnish, Turkish)
+  + Better for rare words (builds from known subwords)
+
+When to use which:
+  Word2Vec  → General purpose, well-known words, large corpora
+  GloVe     → When global statistics matter, pre-trained readily available
+  FastText  → Rare words, morphologically rich text, misspellings
+  Transformers → When you need context-aware embeddings (modern default)
+
+
+------------------------------------------------------------
+8. RNN, LSTM, GRU — AND WHY TRANSFORMERS REPLACED THEM
+------------------------------------------------------------
+
+Before transformers, sequence models were the standard for NLP.
+They process text word by word, left to right, maintaining a
+"hidden state" that carries information forward.
+
+----- RNN (Recurrent Neural Network) -----
+
+Basic idea:
+  At each step t, the model takes:
+  - Current input word (x_t)
+  - Previous hidden state (h_{t-1})
+  And produces new hidden state h_t.
+
+  h_t = tanh(W_h * h_{t-1} + W_x * x_t + b)
+
+  "The cat sat on the mat" → processed word by word
+  h_1(the) → h_2(cat) → h_3(sat) → h_4(on) → h_5(the) → h_6(mat)
+
+RNN problems:
+  1. Vanishing gradient: gradients shrink as they backpropagate
+     through many time steps → early words are "forgotten"
+  2. Exploding gradient: gradients grow uncontrollably (fixed with
+     gradient clipping)
+  3. Cannot parallelize: step t depends on step t-1 → slow training
+  4. Short memory: practically remembers only ~10-20 words back
+
+----- LSTM (Long Short-Term Memory) -----
+
+Designed specifically to solve the vanishing gradient / memory problem.
+Adds a "cell state" (long-term memory) alongside hidden state,
+controlled by three gates:
+
+  1. Forget gate: What to erase from cell state?
+     f_t = sigmoid(W_f * [h_{t-1}, x_t])
+
+  2. Input gate: What new info to add to cell state?
+     i_t = sigmoid(W_i * [h_{t-1}, x_t])
+     C_tilde = tanh(W_c * [h_{t-1}, x_t])
+
+  3. Output gate: What to output from cell state?
+     o_t = sigmoid(W_o * [h_{t-1}, x_t])
+
+Cell state update:
+  C_t = f_t * C_{t-1} + i_t * C_tilde
+
+Hidden state:
+  h_t = o_t * tanh(C_t)
+
+LSTM improvements over RNN:
+  + Much better at capturing long-range dependencies
+  + Solves vanishing gradient significantly
+  + State of the art for NLP from ~2014 to 2017
+
+LSTM remaining problems:
+  - Still sequential → cannot parallelize → slow training
+  - Still struggles with very long sequences (1000+ tokens)
+  - Complex architecture → more parameters, more memory
+
+----- GRU (Gated Recurrent Unit) -----
+
+Simplified version of LSTM with only two gates:
+  1. Reset gate: How much past to forget
+  2. Update gate: How much past to keep vs new info
+
+GRU vs LSTM:
+  Feature       | LSTM          | GRU
+  --------------|---------------|-------------
+  Gates         | 3             | 2
+  Parameters    | More          | Fewer (faster)
+  Performance   | Slightly better on long sequences | Similar on most tasks
+  Training speed| Slower        | Faster
+
+----- WHY TRANSFORMERS REPLACED THEM -----
+
+The core problem: RNN/LSTM/GRU are inherently sequential.
+To process token 100, you must first process tokens 1-99.
+This kills parallelization → slow training on GPUs.
+
+Transformers solve this with:
+  1. Self-attention: every token attends to every other token
+     simultaneously → fully parallelizable
+  2. No recurrence: no hidden state passed step by step
+  3. Positional encoding: position info added directly to input
+     (compensates for losing sequential order)
+
+Result:
+  - Training 10-100x faster (full GPU parallelization)
+  - Better long-range dependencies (direct token-to-token attention)
+  - Scale better with data and compute
+
+RNN/LSTM are still used for:
+  - Time series with strict sequential structure
+  - Edge devices with memory constraints
+  - Streaming/online learning scenarios
+  - Some specialized audio and signal processing tasks
+
+
+------------------------------------------------------------
+9. ATTENTION MECHANISM
+------------------------------------------------------------
+
+Attention is the key innovation that powers all modern NLP.
+It allows the model to focus on the most relevant parts of the
+input when producing each output — like a spotlight.
+
+The core problem attention solves:
+  In encoder-decoder RNNs for translation, the entire source
+  sentence was compressed into ONE fixed-size vector (bottleneck).
+  Long sentences → information loss.
+
+  Attention lets the decoder look back at ALL encoder states
+  and decide which ones are most relevant for each output word.
+
+----- How Attention Works -----
+
+Given a query Q (what we're looking for) and a set of
+keys K and values V (what we're looking in):
+
+  1. Compute similarity scores: score = Q · K^T
+  2. Normalize with softmax: weights = softmax(score / sqrt(d_k))
+  3. Weighted sum of values: output = weights · V
+
+  Intuition:
+  - Query: "What am I trying to understand right now?"
+  - Keys: "What does each word offer?"
+  - Values: "What is the actual content of each word?"
+  - Output: A blend of values weighted by relevance to query
+
+Example — translating "The animal didn't cross the street because it was tired":
+  When predicting what "it" refers to, attention should focus
+  heavily on "animal" (high attention weight) rather than "street".
+
+----- Self-Attention -----
+
+In self-attention, Q, K, V all come from the SAME sequence.
+Every token attends to every other token in the same sentence.
+
+"The cat sat on the mat"
+  - "cat" attends to "sat" (what did cat do?)
+  - "sat" attends to "cat" and "mat" (who sat where?)
+  - Every pair has an attention score
+
+This captures relationships between all words simultaneously,
+regardless of how far apart they are in the sentence.
+
+----- Multi-Head Attention -----
+
+Instead of one attention computation, run h parallel attention
+"heads" with different learned projections.
+
+Each head learns to attend to different types of relationships:
+  - Head 1: syntactic relationships (subject-verb)
+  - Head 2: coreference (what does "it" refer to?)
+  - Head 3: semantic roles (agent, patient)
+
+Outputs from all heads are concatenated and projected:
+  MultiHead(Q,K,V) = Concat(head_1, ..., head_h) * W_O
+
+Why multi-head?
+  A single attention function averages everything.
+  Multiple heads let the model attend to different
+  representation subspaces simultaneously.
+
+Complexity:
+  Self-attention is O(n²) in sequence length n.
+  For sequence of 512 tokens: 512 × 512 = 262,144 attention pairs.
+  This is why very long sequences are expensive for transformers.
+
+
+------------------------------------------------------------
+10. TRANSFORMER ARCHITECTURE
+------------------------------------------------------------
+
+Introduced in "Attention Is All You Need" (Vaswani et al., 2017).
+The transformer is built entirely on attention — no recurrence,
+no convolution.
+
+----- High-Level Architecture -----
+
+  Input text
+      ↓
+  Tokenization + Token Embeddings
+      ↓
+  + Positional Encoding
+      ↓
+  [Encoder Stack] ←── used in BERT-style models
+      ↓
+  [Decoder Stack] ←── used in GPT-style models
+      ↓
+  Output (next token probabilities / classification)
+
+----- Positional Encoding -----
+
+Since transformers have no recurrence, they don't know word order.
+Positional encoding adds position information directly to embeddings.
+
+  PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
+  PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+
+Each position gets a unique pattern of sine/cosine waves.
+This is added to the word embedding before entering attention.
+
+----- Encoder Block (used in BERT) -----
+
+Each encoder layer has:
+  1. Multi-Head Self-Attention
+     (each token attends to all other tokens bidirectionally)
+  2. Add & Norm (residual connection + layer normalization)
+  3. Feed-Forward Network (two linear layers with ReLU)
+  4. Add & Norm again
+
+  Input → [Self-Attention → Add&Norm → FFN → Add&Norm] → Output
+
+Residual connections (Add): add input to output of each sublayer
+  → prevents vanishing gradients, allows very deep networks
+
+Layer Normalization: normalizes across feature dimension
+  → stabilizes training
+
+Stacked N times (BERT-base: N=12, BERT-large: N=24)
+
+----- Decoder Block (used in GPT) -----
+
+Each decoder layer has:
+  1. Masked Multi-Head Self-Attention
+     (can only attend to PAST tokens — future is masked)
+  2. Add & Norm
+  3. Cross-Attention (in encoder-decoder models like T5)
+     (attends to encoder output)
+  4. Add & Norm
+  5. Feed-Forward Network
+  6. Add & Norm
+
+Causal masking: prevents "cheating" — when predicting token t,
+the model cannot see tokens t+1, t+2, ... (future)
+
+----- Encoder-Only vs Decoder-Only vs Encoder-Decoder -----
+
+  Architecture     | Examples          | Best For
+  -----------------|-------------------|---------------------------
+  Encoder-only     | BERT, RoBERTa     | Classification, NER, QA
+  Decoder-only     | GPT, LLaMA        | Text generation, completion
+  Encoder-Decoder  | T5, BART, mT5     | Translation, summarization
+
+----- Feed-Forward Network (FFN) -----
+
+After attention, each position goes through a small neural net:
+  FFN(x) = max(0, xW_1 + b_1)W_2 + b_2
+
+  d_model=512 → d_ff=2048 (4x expansion)
+
+This is where most of the model's "knowledge" is stored
+(factual recall, patterns). Research shows ~80% of factual
+knowledge is in the FFN weights, not the attention.
+
+----- Transformer scaling -----
+
+  Model        | Params  | Layers | Heads | d_model
+  -------------|---------|--------|-------|--------
+  BERT-base    | 110M    | 12     | 12    | 768
+  BERT-large   | 340M    | 24     | 16    | 1024
+  GPT-2        | 1.5B    | 48     | 25    | 1600
+  GPT-3        | 175B    | 96     | 96    | 12288
+  LLaMA-3 70B  | 70B     | 80     | 64    | 8192
+
+
+------------------------------------------------------------
+11. BERT vs GPT — DIFFERENCES AND USE CASES
+------------------------------------------------------------
+
+Both are transformer-based models but fundamentally different
+in architecture, training objective, and use cases.
+
+----- BERT (Bidirectional Encoder Representations from Transformers) -----
+
+Developed by Google (Devlin et al., 2018).
+
+Architecture: Encoder-only (bidirectional)
+  Sees the FULL sentence in both directions simultaneously.
+  "The cat [MASK] on the mat" → model sees both left and right context
+  to predict the masked word.
+
+Pre-training objectives:
+  1. Masked Language Modeling (MLM)
+     Randomly mask 15% of tokens, predict them.
+     Teaches bidirectional understanding of language.
+
+  2. Next Sentence Prediction (NSP)
+     Given two sentences A and B, predict if B follows A.
+     Teaches sentence-level relationships.
+     (Later research showed NSP adds little value)
+
+What BERT is good at:
+  - Text classification (sentiment, spam, topic)
+  - Named Entity Recognition (NER)
+  - Question Answering (extractive — find answer span in text)
+  - Sentence similarity / semantic search
+  - Anything requiring UNDERSTANDING of text
+
+What BERT cannot do:
+  - Generate text (encoder-only, not designed for generation)
+  - Open-ended conversation
+  - Text completion
+
+Fine-tuning BERT:
+  Add a task-specific head on top of [CLS] token or token embeddings
+  Fine-tune all weights on labeled data for your specific task.
+
+----- GPT (Generative Pre-trained Transformer) -----
+
+Developed by OpenAI.
+
+Architecture: Decoder-only (causal/unidirectional)
+  Can only see LEFT context (past tokens).
+  "The cat sat on the ___" → predicts "mat"
+
+Pre-training objective:
+  Causal Language Modeling (CLM) / Next Token Prediction
+  Given tokens 1..t, predict token t+1.
+  Trains on internet-scale text to predict next word.
+
+What GPT is good at:
+  - Text generation (stories, code, essays)
+  - Conversation (ChatGPT)
+  - Summarization
+  - Translation
+  - Zero-shot and few-shot task solving (GPT-3+)
+  - Any task framed as text completion
+
+What GPT is less suited for:
+  - Extractive QA (no bidirectional context)
+  - Token classification (NER) — possible but awkward
+  - Tasks requiring full bidirectional understanding
+
+----- BERT vs GPT Comparison -----
+
+  Feature              | BERT                    | GPT
+  ---------------------|-------------------------|-------------------------
+  Architecture         | Encoder-only            | Decoder-only
+  Directionality       | Bidirectional           | Unidirectional (left→right)
+  Pre-training task    | Masked LM + NSP         | Next token prediction
+  Strength             | Understanding           | Generation
+  Fine-tuning style    | Add classification head | Prompt / fine-tune
+  Use case             | NER, QA, classification | Chat, generation, code
+  Examples             | BERT, RoBERTa, ALBERT   | GPT-2/3/4, LLaMA, Mistral
+
+----- Other Important Variants -----
+
+  RoBERTa (Facebook):
+    BERT without NSP, trained longer on more data.
+    Outperforms BERT on most benchmarks.
+
+  ALBERT (Google):
+    Parameter-efficient BERT — shares weights across layers.
+    Much smaller, similar performance.
+
+  DistilBERT:
+    Distilled BERT — 40% smaller, 60% faster, 97% performance.
+    Great for production deployment.
+
+  T5 (Google):
+    Encoder-Decoder. Frames ALL tasks as text-to-text.
+    "translate English to French: Hello" → "Bonjour"
+    "summarize: [article]" → "[summary]"
+    "sentiment: I love this" → "positive"
+
+  LLaMA (Meta):
+    Open-source GPT-style model. Basis for many fine-tuned models.
+
+  BART (Facebook):
+    Encoder-Decoder. Encoder is bidirectional (like BERT),
+    Decoder is autoregressive (like GPT). Best for summarization.
+
+
+------------------------------------------------------------
+12. TOKENIZATION STRATEGIES — BPE, WordPiece, SentencePiece
+------------------------------------------------------------
+
+Tokenization is the process of splitting text into units (tokens)
+that the model processes. Modern models do NOT split on spaces —
+they use subword tokenization.
+
+Why subword tokenization?
+  Word-level: huge vocabulary, OOV problem
+    "unhappiness" → unknown if not in vocab
+  Char-level: tiny vocabulary, very long sequences, no meaning
+    "cat" → ['c','a','t'] — loses word-level patterns
+  Subword: balance — common words stay whole, rare words split into parts
+    "unhappiness" → ["un", "happy", "ness"]
+
+----- BPE (Byte Pair Encoding) -----
+
+Used by: GPT-2, GPT-3, GPT-4, RoBERTa, LLaMA
+
+Algorithm:
+  1. Start with character-level vocabulary
+  2. Count all adjacent byte/character pairs in training corpus
+  3. Merge the most frequent pair into a new token
+  4. Repeat until vocabulary reaches target size (e.g., 50,000)
+
+Example:
+  Start:   "l o w e r" "l o w" "n e w e r"
+  Step 1:  Most frequent pair: (e,r) → merge to "er"
+           "l o w er" "l o w" "n e w er"
+  Step 2:  Most frequent pair: (l,o) → merge to "lo"
+           "lo w er" "lo w" "n e w er"
+  ...continues until vocab size reached
+
+Result:
+  "lower"  → ["low", "er"]
+  "newer"  → ["new", "er"]
+  "lowest" → ["low", "est"]
+
+----- WordPiece -----
+
+Used by: BERT, DistilBERT, ALBERT
+
+Similar to BPE but merges based on likelihood increase rather than
+raw frequency. Merges pairs that maximize language model probability.
+
+WordPiece marks subword continuations with "##":
+  "playing" → ["play", "##ing"]
+  "unbelievable" → ["un", "##believe", "##able"]
+
+The "##" prefix means "this token continues the previous token"
+(no space before it).
+
+----- SentencePiece -----
+
+Used by: T5, ALBERT, LLaMA (often combined with BPE)
+
+Key difference: treats text as a raw stream of characters
+(including spaces). Does NOT pre-tokenize on spaces.
+Space is represented as a special character "▁".
+
+"Hello world" → ["▁Hello", "▁world"]
+"don't"       → ["▁don", "'", "t"]  (no assumptions about spaces)
+
+Why this matters:
+  - Language-agnostic: works for Chinese, Japanese (no spaces)
+  - Consistent: same behavior across all languages
+  - Reversible: can always reconstruct original text
+
+----- Comparison -----
+
+  Method        | Used By          | Space handling | Continuation marker
+  --------------|------------------|----------------|--------------------
+  BPE           | GPT, LLaMA       | Space as token | "Ġ" prefix
+  WordPiece     | BERT             | Split on space | "##" suffix
+  SentencePiece | T5, LLaMA, ALBERT| Space as "▁"  | "▁" prefix
+
+----- Special Tokens -----
+
+Every tokenizer adds special tokens for model structure:
+
+  [CLS]  → Classification token (BERT) — used for sentence-level tasks
+  [SEP]  → Separator between sentences (BERT)
+  [MASK] → Masked token for MLM training (BERT)
+  [PAD]  → Padding to make batches uniform length
+  <s>    → Start of sequence (GPT style)
+  </s>   → End of sequence
+  <unk>  → Unknown token (rare in subword models)
+
+
+------------------------------------------------------------
+13. EVALUATION METRICS — BLEU, ROUGE, PERPLEXITY, F1
+------------------------------------------------------------
+
+Evaluating NLP models requires different metrics depending on
+whether the task has exact answers or open-ended outputs.
+
+----- F1 Score -----
+
+Used for: Classification, NER, Extractive QA
+
+  Precision = True Positives / (True Positives + False Positives)
+            = Of all things I predicted as positive, how many were right?
+
+  Recall    = True Positives / (True Positives + False Negatives)
+            = Of all actual positives, how many did I find?
+
+  F1        = 2 × (Precision × Recall) / (Precision + Recall)
+            = Harmonic mean of precision and recall
+
+  Example — NER:
+    True entities: ["London", "Paris", "Berlin"]
+    Predicted:     ["London", "Paris", "Rome"]
+    TP=2 (London, Paris), FP=1 (Rome), FN=1 (Berlin)
+    Precision = 2/3 = 0.67
+    Recall    = 2/3 = 0.67
+    F1        = 0.67
+
+  Macro F1: Average F1 per class (treats all classes equally)
+  Micro F1: Pool all TP/FP/FN then compute (weighted by class size)
+  Weighted F1: Weight by support (frequency) of each class
+
+----- BLEU (Bilingual Evaluation Understudy) -----
+
+Used for: Machine Translation, Text Generation
+
+Measures how much the generated text overlaps with reference text
+using n-gram precision.
+
+  BLEU = BP × exp(Σ w_n × log(precision_n))
+
+  Where:
+  - precision_n = n-gram overlap between candidate and reference
+  - BP = Brevity Penalty (penalizes short outputs that game precision)
+  - w_n = weights (usually uniform: 0.25 each for 1,2,3,4-grams)
+
+  Example:
+    Reference:  "The cat sat on the mat"
+    Candidate:  "The cat sat on the mat"  → BLEU = 1.0 (perfect)
+    Candidate:  "The cat"                 → High precision but low recall
+                                             → BP penalizes short output
+
+  BLEU scores:
+    < 0.10: Almost unusable
+    0.10 - 0.19: Hard to understand
+    0.20 - 0.29: Understandable with effort
+    0.30 - 0.40: Good quality
+    > 0.40: High quality (approaches human)
+
+  BLEU limitations:
+  - Measures exact n-gram overlap only — "good" vs "great" = no match
+  - Does not consider semantics or fluency
+  - Correlates poorly with human judgment on open-ended generation
+  - Gameable with short outputs without brevity penalty
+
+----- ROUGE (Recall-Oriented Understudy for Gisting Evaluation) -----
+
+Used for: Summarization, Text Generation
+
+Measures overlap between generated and reference text.
+Focus on RECALL (did you cover the important content?).
+
+  ROUGE-N: n-gram overlap (recall-focused)
+    ROUGE-1: unigram overlap
+    ROUGE-2: bigram overlap
+
+  ROUGE-L: Longest Common Subsequence (order-aware)
+
+  Example:
+    Reference:  "The cat sat on the mat"
+    Candidate:  "The cat sat on a rug"
+
+    ROUGE-1 recall = 4/6 = 0.67 (the, cat, sat, on matched)
+    ROUGE-1 precision = 4/6 = 0.67
+
+  ROUGE-1 F1 = 2 × (0.67 × 0.67) / (0.67 + 0.67) = 0.67
+
+  BLEU vs ROUGE:
+    BLEU  → precision-focused → "Did you say something correct?"
+    ROUGE → recall-focused    → "Did you cover the important stuff?"
+    Summarization → use ROUGE (coverage matters)
+    Translation   → use BLEU  (exact phrasing matters)
+
+----- Perplexity -----
+
+Used for: Language model evaluation (intrinsic measure)
+
+Measures how "surprised" a model is by a test text.
+Lower perplexity = model assigns higher probability to real text
+= better language model.
+
+  Perplexity = exp(-1/N × Σ log P(token_i | context))
+
+  Interpretation:
+    Perplexity of K means the model is as confused as if it had
+    to choose uniformly among K options at each step.
+
+  Example:
+    Model with PPL=10: at each token, model is as confused as
+    choosing among 10 equally likely options → good model
+    Random model on 50,000-word vocab: PPL ≈ 50,000 → terrible
+
+  Perplexity values:
+    < 20:  Excellent language model (GPT-4 class)
+    20-50: Good
+    50-100: Moderate
+    > 200: Poor (RNNs on hard data)
+
+  Limitations:
+  - Only measures how well model fits training distribution
+  - Low perplexity ≠ useful, truthful, or safe outputs
+  - Cannot compare models with different tokenizers (different vocab sizes)
+
+----- Other Metrics -----
+
+  BERTScore:
+    Uses BERT embeddings to compare semantic similarity.
+    More robust than BLEU/ROUGE to synonyms and paraphrase.
+    Correlates better with human judgment.
+
+  METEOR:
+    Like BLEU but also matches synonyms and stems.
+    Better correlates with human translation quality.
+
+  MOS (Mean Opinion Score):
+    Human evaluation on 1-5 scale for quality, fluency, helpfulness.
+    Gold standard but expensive.
+
+  Accuracy:
+    For classification with balanced classes.
+
+  MRR (Mean Reciprocal Rank):
+    For retrieval and ranking tasks.
+    MRR = average of 1/rank of first correct result.
+
+
+------------------------------------------------------------
+14. FINE-TUNING vs PROMPTING vs RAG
+------------------------------------------------------------
+
+Three major paradigms for adapting a pre-trained LLM to your
+specific task or domain.
+
+----- Pre-training vs Adaptation -----
+
+  Pre-training: Train from scratch on massive text corpus.
+    Cost: Millions of dollars, weeks of GPU time.
+    Result: General-purpose base model (GPT, LLaMA, BERT).
+
+  Adaptation: Take a pre-trained model and specialize it.
+    Cost: Much cheaper.
+    Three main approaches: Fine-tuning, Prompting, RAG.
+
+----- FINE-TUNING -----
+
+Update the model's weights on your domain-specific labeled data.
+
+Types of fine-tuning:
+
+  1. Full fine-tuning
+     Update ALL model weights.
+     Pros: Maximum customization, best task performance.
+     Cons: Expensive (same compute as pre-training smaller model),
+           catastrophic forgetting (model forgets general knowledge).
+
+  2. Instruction fine-tuning (SFT — Supervised Fine-Tuning)
+     Fine-tune on (instruction, response) pairs.
+     Teaches model to follow instructions.
+     Example: InstructGPT, ChatGPT (first stage).
+
+  3. RLHF (Reinforcement Learning from Human Feedback)
+     Train a reward model on human preferences.
+     Use RL (PPO) to optimize LLM output toward high reward.
+     Makes models helpful, harmless, honest.
+
+  4. LoRA (Low-Rank Adaptation) — Parameter-efficient
+     Freeze all original weights.
+     Add small trainable "adapter" matrices (low-rank decomposition).
+     Train only adapters (0.1-1% of parameters).
+     Pros: 10-100x cheaper, no catastrophic forgetting.
+     Cons: Slightly lower performance than full fine-tuning.
+
+  5. QLoRA
+     LoRA with quantized (4-bit) base model.
+     Can fine-tune 70B model on a single consumer GPU.
+
+When to fine-tune:
+  - You need the model to behave very differently from its base behavior
+  - You have lots of domain-specific labeled data (1000+ examples)
+  - Latency matters (baked-in knowledge vs lookup)
+  - Proprietary style, tone, or format requirements
+  - Classification tasks where prompting is unreliable
+
+When NOT to fine-tune:
+  - You have < 100 examples (few-shot prompting works better)
+  - Your data changes frequently (would need re-fine-tuning)
+  - You need factual accuracy on real-time info
+
+----- PROMPTING -----
+
+No weight updates. Design the input prompt to guide the model.
+
+  Zero-shot:
+    "Classify this review as positive or negative: 'I loved this!'"
+    No examples given.
+
+  Few-shot:
+    Give 2-5 examples in the prompt, then the actual query.
+    "positive: 'Great product!'
+     negative: 'Terrible quality.'
+     positive: 'Absolutely loved it!'
+     Classify: 'I hated it.'"
+
+  Chain-of-Thought (CoT):
+    Ask the model to reason step by step before answering.
+    "Let's think step by step: ..."
+    Dramatically improves performance on math and logic tasks.
+
+  System prompting:
+    Set behavior, persona, constraints in a system message.
+    "You are a helpful assistant. Never make up information."
+
+When to use prompting:
+  - Quick experiments / prototypes
+  - Tasks where the base model already performs well
+  - Low data situations
+  - When you need flexibility to change behavior without retraining
+
+Limitations of prompting:
+  - Input length limits (cannot fit 1000 examples in context)
+  - Model may not reliably follow complex instructions
+  - Cannot teach truly new knowledge
+  - Prompt leakage / injection risks
+
+----- RAG (Retrieval Augmented Generation) -----
+
+Combine retrieval from an external knowledge base with generation.
+(Covered in depth in Section 15)
+
+Fine-tuning vs Prompting vs RAG decision tree:
+
+  Need real-time / up-to-date info?        → RAG
+  Need domain-specific style/behavior?     → Fine-tune
+  Need factual grounding + generation?     → RAG + Fine-tune
+  Have < 100 examples?                     → Few-shot prompting
+  Have 1000+ examples + GPU budget?        → Fine-tune
+  Need to reduce hallucinations?           → RAG
+  Need lowest latency?                     → Fine-tune (knowledge baked in)
+
+
+------------------------------------------------------------
+15. RAG — RETRIEVAL AUGMENTED GENERATION
+------------------------------------------------------------
+
+RAG is an architecture that reduces hallucination and adds
+real-time, factual grounding to LLMs by retrieving relevant
+documents before generating a response.
+
+Core problem RAG solves:
+  LLMs have a knowledge cutoff. They cannot access:
+  - Your company's internal documents
+  - Real-time news or prices
+  - Any document written after training
+  And they hallucinate when asked about things they don't know.
+
+----- RAG Pipeline -----
+
+  Step 1: Indexing (offline)
+    a. Collect documents (PDFs, web pages, databases)
+    b. Chunk them into passages (e.g., 512 tokens each)
+    c. Embed each chunk using an embedding model
+    d. Store embeddings in a vector database
+
+  Step 2: Retrieval (online, per query)
+    a. User asks a question
+    b. Embed the question using same embedding model
+    c. Search vector database for most similar chunks (ANN search)
+    d. Return top-k chunks (typically k=3-5)
+
+  Step 3: Generation
+    a. Build prompt: [System] + [Retrieved chunks] + [User question]
+    b. Send to LLM
+    c. LLM generates answer grounded in retrieved context
+
+  Example prompt:
+    "Answer the question based on the context below.
+     Context: [retrieved chunk 1] [retrieved chunk 2] [retrieved chunk 3]
+     Question: What is our refund policy?
+     Answer:"
+
+----- Chunking Strategies -----
+
+  Fixed-size chunking: Split every N tokens (simple, common)
+  Sentence chunking: Split on sentences (more semantic)
+  Recursive chunking: Split on paragraphs, then sentences, then words
+  Semantic chunking: Embed + split where embedding similarity drops
+  Document-aware: Respect document structure (headers, sections)
+
+  Chunk size tradeoff:
+    Small chunks (128 tokens): precise retrieval, less context per chunk
+    Large chunks (1024 tokens): more context, noisier retrieval
+
+----- Retrieval Methods -----
+
+  Dense retrieval: embed query + chunks, cosine similarity search
+  Sparse retrieval: BM25 / TF-IDF keyword matching
+  Hybrid retrieval: combine dense + sparse (best of both worlds)
+    dense finds semantically similar → covers paraphrases
+    sparse finds exact keyword matches → covers specific terms/names
+
+  Re-ranking:
+    After retrieving top-20 chunks with fast ANN search,
+    use a cross-encoder reranker to re-score and select top-3.
+    Cross-encoder: processes (query, chunk) jointly → better accuracy
+    but too slow for full corpus → only use on shortlisted candidates.
+
+----- RAG Failure Modes -----
+
+  1. Retrieval failure: correct document not retrieved
+     Fix: better chunking, hybrid retrieval, query rewriting
+
+  2. Context too long: retrieved chunks overflow context window
+     Fix: better reranking, smaller chunks, compression
+
+  3. Model ignores context: model uses its own knowledge instead
+     Fix: stronger prompting, instruction fine-tuning
+
+  4. Hallucination within retrieved context: model still makes up details
+     Fix: add citations, constrain model to answer "I don't know"
+
+  5. Stale index: documents updated but index not refreshed
+     Fix: incremental indexing pipeline
+
+----- Advanced RAG Patterns -----
+
+  Query rewriting: Rewrite user query before retrieval for better results
+  HyDE (Hypothetical Document Embeddings): Generate a hypothetical
+    answer, embed it, retrieve documents similar to hypothetical answer
+  Multi-hop RAG: Retrieve → generate intermediate answer → retrieve again
+  Agentic RAG: LLM decides when and what to retrieve (tool use)
+
+----- When to use RAG vs Fine-tuning -----
+
+  RAG wins when:
+    - Knowledge base changes frequently
+    - Factual accuracy and grounding is critical
+    - Need to cite sources
+    - Cannot afford fine-tuning
+
+  Fine-tuning wins when:
+    - Teaching the model a new behavior/style (not new facts)
+    - Knowledge is static and fully known at train time
+    - Latency is critical (no retrieval step)
+
+  Often: RAG + fine-tuning together (fine-tune for style, RAG for facts)
+
+
+------------------------------------------------------------
+16. VECTOR DATABASES AND SEMANTIC SEARCH
+------------------------------------------------------------
+
+Vector databases are specialized storage systems designed to
+efficiently search through millions of high-dimensional embeddings.
+
+----- Why not a regular database? -----
+
+  SQL databases support exact lookups and range queries.
+  But "find the 5 most semantically similar documents to this query"
+  requires comparing the query vector to millions of stored vectors.
+
+  Brute force: O(n × d) for n vectors of dimension d.
+  At 1M vectors × 1536 dimensions: 1.5 billion multiplications per query.
+  → Too slow for real-time use.
+
+----- Approximate Nearest Neighbor (ANN) Search -----
+
+  Vector databases use ANN algorithms that trade a small amount
+  of accuracy for a massive speedup (100-1000x faster than exact).
+
+  Key ANN algorithms:
+
+  1. HNSW (Hierarchical Navigable Small World)
+     Builds a graph where nearby vectors are connected.
+     Search: start from a random entry point, greedily navigate
+     toward the query vector, explore neighbors at each layer.
+     Pros: Fast, high recall, good for high-dim data
+     Cons: High memory usage (graph storage)
+
+  2. IVF (Inverted File Index)
+     Cluster vectors into K groups (k-means).
+     At query time, search only the nearest few clusters.
+     Pros: Low memory
+     Cons: Lower recall if query falls between cluster boundaries
+
+  3. Product Quantization (PQ)
+     Compress vectors to use less memory.
+     Split 1536-dim vector into 12 subvectors × 128-dim each.
+     Quantize each subvector to nearest centroid (lossy compression).
+     Pros: 10-100x compression
+     Cons: Accuracy loss
+
+  Most production systems use HNSW + PQ combined (IVFFlat, HNSW+PQ).
+
+----- Popular Vector Databases -----
+
+  Pinecone:
+    Fully managed, serverless, easy setup.
+    Good for production use without infrastructure management.
+
+  Weaviate:
+    Open-source, supports hybrid search (dense + sparse) natively.
+    Good multi-modal support (text + images).
+
+  Qdrant:
+    Open-source, Rust-based (fast), payload filtering.
+    Good for filtered search (e.g., "similar docs WHERE date > 2024").
+
+  Chroma:
+    Lightweight, great for prototyping and small-scale projects.
+    Easy to embed in Python applications.
+
+  pgvector:
+    PostgreSQL extension — store vectors alongside your existing data.
+    Good when you want to avoid a separate vector DB service.
+
+  FAISS (Facebook AI Similarity Search):
+    Library (not a database) — integrate into your own system.
+    Extremely fast, battle-tested at Meta scale.
+
+----- Semantic Search vs Keyword Search -----
+
+  Keyword search (BM25, TF-IDF):
+    Finds documents containing the exact query words.
+    Query: "automobile insurance"
+    Finds: documents with "automobile" AND "insurance"
+    Misses: documents about "car coverage" (same meaning, different words)
+
+  Semantic search (vector similarity):
+    Finds documents with similar MEANING regardless of exact words.
+    Query: "automobile insurance"
+    Finds: "car coverage", "vehicle protection plan", "auto policy"
+    Misses: exact keyword matches if embedding is off
+
+  Hybrid search (best practice):
+    Run both, combine results with reciprocal rank fusion or weighted sum.
+    Covers both exact matches and semantic similarity.
+
+
+------------------------------------------------------------
+17. LLM SAMPLING — TEMPERATURE, TOP-K, TOP-P
+------------------------------------------------------------
+
+When an LLM generates text, at each step it produces a probability
+distribution over the entire vocabulary. Sampling parameters control
+HOW we pick the next token from that distribution.
+
+----- Greedy Decoding -----
+
+Always pick the single highest probability token.
+  Output: deterministic, repetitive, often generic.
+  "The best way to learn is to practice. Practice makes perfect.
+   Practice is the key to success. The key is to practice."
+
+Not used for creative tasks — fine for structured extraction.
+
+----- Temperature -----
+
+Scales the logits before softmax — controls "sharpness" of distribution.
+
+  logits_scaled = logits / temperature
+  probabilities = softmax(logits_scaled)
+
+  Temperature = 1.0: Default distribution (no change)
+  Temperature < 1.0: Sharper — high-prob tokens get even higher probability
+    → more deterministic, focused, conservative
+    → good for: factual QA, code generation, structured output
+  Temperature > 1.0: Flatter — probabilities become more uniform
+    → more random, creative, surprising
+    → good for: brainstorming, creative writing, diverse sampling
+  Temperature → 0: Approaches greedy (always picks highest prob)
+  Temperature → ∞: Approaches uniform random (any token equally likely)
+
+  Rule of thumb:
+    0.0 - 0.3: Deterministic, factual tasks
+    0.5 - 0.7: Balanced (default for most applications)
+    0.8 - 1.2: Creative, diverse outputs
+    > 1.5: Very random, often incoherent
+
+----- Top-K Sampling -----
+
+At each step, keep only the top K most probable tokens,
+set all others to 0, then sample from remaining K.
+
+  K=1: Same as greedy
+  K=50: Sample from top 50 tokens only
+
+  Problem: K is fixed regardless of distribution shape.
+    If distribution is very peaked → K=50 includes many near-zero tokens
+    If distribution is very flat → K=50 might miss important options
+
+----- Top-P (Nucleus) Sampling -----
+
+Keep the smallest set of tokens whose cumulative probability ≥ P.
+
+  p=0.9: Keep tokens until their cumulative probability reaches 90%.
+    Peaked distribution → nucleus might be 3 tokens
+    Flat distribution  → nucleus might be 200 tokens
+    → adapts dynamically to the distribution shape
+
+  p=1.0: No filtering (all tokens considered)
+  p=0.1: Very conservative (almost always picks top token)
+
+  Top-P > Top-K in practice because it adapts to each distribution.
+
+----- Combining Sampling Parameters -----
+
+  Typical production setup:
+    temperature=0.7, top_p=0.9, top_k=50
+
+  Order of operations:
+    1. Scale logits by temperature
+    2. Apply top-k filtering (remove tokens outside top K)
+    3. Apply top-p filtering (remove tokens outside nucleus)
+    4. Sample from remaining distribution
+
+----- Repetition Penalty -----
+
+Penalizes tokens that have already appeared in the output.
+  Reduces repetitive loops and generic phrases.
+  Values: 1.0 (no penalty) to 1.3+ (strong penalty)
+
+----- Beam Search -----
+
+Keeps B (beam width) candidate sequences at each step,
+expands all of them, keeps top B.
+
+  Greedy: keeps 1 candidate (can miss globally better sequences)
+  Beam (B=5): explores 5 paths, picks best overall
+
+  Better for translation and summarization (exact outputs).
+  Worse for open-ended generation (produces generic, safe outputs).
+  Slow: B times more computation.
+
+
+------------------------------------------------------------
+18. HALLUCINATION — CAUSES AND MITIGATION
+------------------------------------------------------------
+
+Hallucination is when an LLM generates confident-sounding text
+that is factually incorrect, fabricated, or inconsistent with
+the provided context.
+
+Types of hallucination:
+
+  1. Factual hallucination
+     Model states false facts confidently.
+     "The Eiffel Tower is located in London." (It's in Paris)
+
+  2. Contextual hallucination
+     Model contradicts or ignores the provided context.
+     Context says policy is 30 days. Model says "60-day return policy."
+
+  3. Faithfulness hallucination (in summarization)
+     Summary adds facts not in the source document.
+
+  4. Entity fabrication
+     Model invents people, papers, citations, statistics.
+     Famous example: lawyers submitting AI-generated briefs citing
+     fake court cases (Mata v. Avianca, 2023).
+
+----- Why LLMs Hallucinate -----
+
+  1. Learned to sound confident
+     Training objective is next-token prediction — optimizes for
+     fluency and coherence, not factual accuracy.
+     Model learns "confident sounding text gets reinforced."
+
+  2. Knowledge gaps filled with plausible guesses
+     When model doesn't know → it doesn't say "I don't know"
+     → it generates the most plausible-sounding continuation.
+
+  3. Memorization failures
+     Facts stored imperfectly in weights. Model "remembers" partial
+     information and fills gaps with confabulation.
+
+  4. Distribution shift
+     Model trained on data up to cutoff → asked about newer events
+     → generates plausible but wrong information.
+
+  5. Attention failures on long context
+     Model may "lose" key facts in very long prompts.
+     The "lost in the middle" problem — facts in the middle of context
+     are less attended to than beginning or end.
+
+  6. Sycophancy
+     Model agrees with incorrect user claims to seem helpful.
+     User: "Einstein invented the telephone, right?"
+     Hallucinating model: "Yes, Einstein made significant contributions..."
+
+----- How to Reduce Hallucination -----
+
+  Architectural / training:
+  - RLHF with calibration reward (penalize overconfidence)
+  - Constitutional AI (self-critique and revision)
+  - Factuality fine-tuning on verified datasets
+
+  Retrieval:
+  - RAG: ground generation in retrieved documents
+  - Ask model to cite specific passages → forces faithfulness
+  - Add "answer only from the context" instructions
+
+  Prompting:
+  - "If you don't know, say 'I don't know'"
+  - Ask for chain-of-thought reasoning (reasoning reduces hallucination)
+  - Ask model to rate its own confidence
+  - Break complex queries into smaller verifiable steps
+
+  Post-processing:
+  - Fact-checking layer (another model verifies claims)
+  - Self-consistency: sample multiple outputs, take majority vote
+  - Retrieval verification: check claims against authoritative sources
+
+  System design:
+  - Keep generation tasks narrow and grounded
+  - Avoid asking model to recall specific statistics, dates, citations
+  - Log + monitor outputs for hallucination patterns
+
+
+------------------------------------------------------------
+19. LLM EVALUATION
+------------------------------------------------------------
+
+Evaluating LLMs is hard because outputs are open-ended text —
+there is no single "correct" answer for most generation tasks.
+
+----- Intrinsic vs Extrinsic Evaluation -----
+
+  Intrinsic: Evaluate the model itself (perplexity, coherence)
+  Extrinsic: Evaluate on downstream task performance (accuracy, F1, BLEU)
+
+----- Automatic Metrics -----
+
+  See Section 13 for BLEU, ROUGE, Perplexity, F1, BERTScore.
+
+  Limitations of automatic metrics:
+  - BLEU/ROUGE measure surface overlap, not quality
+  - Perplexity measures fit to distribution, not usefulness
+  - High BLEU score ≠ useful, safe, or truthful output
+
+----- Benchmark Suites -----
+
+  MMLU (Massive Multitask Language Understanding):
+    57 subjects (math, science, law, ethics, history).
+    Multiple choice. Tests breadth of world knowledge.
+    GPT-4: ~86%, Human expert: ~89%
+
+  HellaSwag:
+    Commonsense NLI — complete a sentence with the most logical ending.
+    Tests grounded commonsense reasoning.
+
+  HumanEval:
+    164 Python coding problems. Pass@k metric.
+    Tests whether generated code runs and passes unit tests.
+
+  TruthfulQA:
+    Questions designed to elicit common misconceptions.
+    Tests if model gives truthful answers vs. popular false beliefs.
+
+  GSM8K:
+    Grade school math word problems.
+    Tests multi-step arithmetic reasoning.
+
+  BIG-Bench:
+    204 diverse tasks beyond standard benchmarks.
+    Tests generalization and novel reasoning.
+
+----- LLM-as-Judge -----
+
+  Use a stronger LLM (GPT-4) to evaluate outputs of another LLM.
+  Score on dimensions: helpfulness, harmlessness, honesty, quality.
+
+  Pros: Scalable, captures nuance BLEU cannot.
+  Cons: Strong model bias, may prefer its own style,
+        cannot reliably detect factual errors.
+
+  Common format: pairwise comparison
+    "Which response is better: A or B?"
+    → Win rate between models (used by Chatbot Arena).
+
+----- Human Evaluation -----
+
+  Gold standard. Human raters score on:
+  - Relevance: Does response answer the question?
+  - Fluency: Is it grammatically correct and natural?
+  - Coherence: Is it logically consistent?
+  - Factuality: Are the claims true?
+  - Helpfulness: Does it actually help the user?
+
+  Frameworks:
+  - MOS (Mean Opinion Score): 1-5 scale
+  - Side-by-side: Raters pick better of two responses
+  - Red teaming: Adversarial human testers probe for failures
+
+  Problems: Expensive, slow, subjective, hard to scale.
+
+----- Safety Evaluation -----
+
+  Specific to LLMs — evaluate potential harms:
+  - Toxicity / hate speech
+  - Bias (gender, race, religion)
+  - Privacy leakage
+  - Prompt injection resistance
+  - Refusal rate on harmful requests
+  - Jailbreak resistance
+
+  Tools: Perspective API, LlamaGuard, HarmBench.
+
+----- Practical Evaluation Pipeline -----
+
+  1. Automated benchmarks (MMLU, HumanEval) → fast baseline
+  2. Task-specific metrics (F1, BLEU, exact match) → measure your use case
+  3. LLM-as-judge → qualitative comparison at scale
+  4. Human eval on sample → ground truth quality signal
+  5. Safety evaluation → before any deployment
+  6. A/B testing in production → real user feedback as final truth
+
+
+------------------------------------------------------------
+20. RELEVANT JOB TITLES FOR THIS DOCUMENT
+------------------------------------------------------------
+
+This document covers NLP fundamentals through modern GenAI systems.
+Below is a breakdown of how relevant this material is per role.
+
+----- Strong Match (80-100% of this doc applies) -----
+
+  NLP Engineer
+    Core focus: preprocessing, embeddings, transformers, evaluation.
+    Expect deep questions on BoW, TF-IDF, Word2Vec, BERT, attention.
+
+  LLM Engineer / GenAI Engineer
+    Core focus: RAG, fine-tuning, hallucination, sampling, evaluation.
+    Expect system design questions on RAG pipelines and vector databases.
+
+  AI Engineer
+    Broad role — full stack of this doc applies directly.
+    Expect both conceptual depth and practical implementation questions.
+
+  Research Engineer (NLP)
+    Core focus: transformer architecture, attention, evaluation metrics.
+    Expect math-level depth on attention, positional encoding, loss functions.
+
+----- Decent Match (60-70% of this doc applies) -----
+
+  ML Engineer (NLP track)
+    Embeddings, transformers, and evaluation are directly relevant.
+    Will also need: backpropagation, optimizers, training loops, CNNs.
+
+  Data Scientist (NLP focus)
+    Preprocessing, TF-IDF, BoW, and evaluation metrics are core.
+    Will also need: statistics, A/B testing, SQL, pandas, visualization.
+
+  Conversational AI Engineer
+    RAG, LLMs, prompting, and hallucination mitigation are core.
+    Will also need: dialog management, intent classification, slot filling.
+
+----- Partially Relevant (30-50%) -----
+
+  Backend Engineer at an AI company
+    Good for context and understanding the systems you will build around.
+    Not enough depth on distributed systems, APIs, latency, and scaling.
+
+  Product Manager (AI)
+    Helpful for understanding the space and communicating with engineers.
+    Interviews focus on product sense, not technical depth.
+
+----- What to add per role -----
+
+  Role                   | Topics to add beyond this doc
+  -----------------------|------------------------------------------------
+  ML Engineer            | Backprop, optimizers (Adam, SGD), CNNs, loss
+                         | functions, regularization, batch normalization
+  Data Scientist         | Statistics, hypothesis testing, SQL, pandas,
+                         | A/B testing, regression, clustering
+  Research Engineer      | Linear algebra, calculus, paper reading depth,
+                         | experiment design, ablations
+  GenAI / LLM Engineer   | LangChain, LlamaIndex, agents, tool use,
+                         | prompt injection attacks, LLMOps, model serving
+  Conversational AI Eng  | Dialog state tracking, intent classification,
+                         | slot filling, RASA, Dialogflow
+
+----- Interview question types by role -----
+
+  NLP Engineer:
+    "Explain how attention works."
+    "What is the difference between BERT and GPT?"
+    "When would you use TF-IDF over embeddings?"
+    "How would you handle class imbalance in a text classifier?"
+
+  LLM / GenAI Engineer:
+    "Design a RAG system for a customer support bot."
+    "How do you reduce hallucination in production?"
+    "What is the difference between fine-tuning and RAG?"
+    "How does temperature affect LLM outputs?"
+
+  AI Engineer:
+    "Walk me through a full NLP pipeline from raw text to prediction."
+    "How would you evaluate a summarization model?"
+    "What embedding model would you choose and why?"
+    "How do you handle out-of-vocabulary words?"
+
+  ML Engineer (NLP):
+    "What is vanishing gradient and how does LSTM solve it?"
+    "Why did transformers replace RNNs?"
+    "What is perplexity and when is it useful?"
+    "How does LoRA work and when would you use it over full fine-tuning?"
+
+----- Bottom line -----
+
+  This document is best suited for:
+    AI Engineer / LLM Engineer / NLP Engineer interviews.
+
+  It gives you conceptual depth from NLP fundamentals (BoW, TF-IDF)
+  all the way to production GenAI systems (RAG, hallucination, evaluation).
+
+  The single most important skill in interviews:
+    Being able to explain any concept here clearly in plain English,
+    discuss tradeoffs, and say when you would or would not use each approach.
+
+
+============================================================
+END OF NOTES
+============================================================
