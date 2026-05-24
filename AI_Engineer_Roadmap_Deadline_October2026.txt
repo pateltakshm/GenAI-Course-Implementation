@@ -1,0 +1,147 @@
+====================================================
+  AI ENGINEER ROADMAP — DEADLINE: OCTOBER 2026
+  Start Date: May 24, 2026
+====================================================
+
+GOAL: Become a hireable AI Engineer for FAANG-level companies
+with no experience but strong project portfolio.
+
+----------------------------------------------------
+THE CORE TRUTH
+----------------------------------------------------
+FAANG doesn't hire resumes — they hire demonstrated ability.
+Projects are your proof of work.
+
+----------------------------------------------------
+PHASE 1: FOUNDATION (May - June 2026)
+----------------------------------------------------
+
+Math you actually need:
+  - Linear algebra (matrix ops, embeddings)
+  - Probability & stats (distributions, Bayes)
+  - Calculus (gradients — just enough for backprop intuition)
+
+Code fundamentals:
+  - Python fluency — numpy, pandas, async/await
+  - Data structures & algorithms (Leetcode medium is the bar)
+  - SQL — window functions, aggregations
+
+----------------------------------------------------
+PHASE 2: THE AI STACK (July - August 2026)
+----------------------------------------------------
+
+Master these in order:
+
+  1. ML fundamentals    -> scikit-learn, classical models
+  2. Deep learning      -> PyTorch (not TF — industry uses Torch)
+  3. Transformers       -> Hugging Face, fine-tuning, embeddings
+  4. LLM Engineering    -> RAG, agents, evals, prompt engineering
+  5. MLOps              -> experiment tracking (MLflow/W&B), deployment
+
+----------------------------------------------------
+PHASE 3: PROJECTS THAT GET INTERVIEWS (Sep - Oct 2026)
+----------------------------------------------------
+
+FAANG wants to see production thinking, not tutorials.
+Each project needs:
+  - A real problem with measurable impact
+  - An eval framework (how do you know it works?)
+  - A deployed endpoint or demo
+
+Projects that stand out:
+
+  1. RAG system with evals
+     Why: Shows you understand quality, not just vibes
+
+  2. Fine-tuned model on a niche dataset
+     Why: Shows training pipeline knowledge
+
+  3. LLM agent with tool use + observability
+     Why: Shows systems thinking
+
+  4. Benchmark reproduction
+     Why: Shows rigor and research ability
+
+----------------------------------------------------
+WORKFLOW THAT SIGNALS SENIOR THINKING
+----------------------------------------------------
+
+  Plan -> Baseline -> Iterate with evals -> Ship -> Monitor
+
+  - Always establish a baseline before improving
+  - Every experiment logged (W&B or MLflow)
+  - Evals before demos — "how do you measure this?" is the #1
+    interview question
+  - Code in notebooks for exploration, but refactor to modules
+    for projects
+
+----------------------------------------------------
+THE FAANG HIRING FILTER (in order)
+----------------------------------------------------
+
+  1. Resume screen
+     Keywords: PyTorch, LLMs, RAG, distributed training, MLOps
+
+  2. GitHub/portfolio
+     Repos with READMEs, results, and architecture diagrams
+
+  3. Coding rounds
+     LC mediums + ML-specific questions
+     (complexity of SGD, embedding search)
+
+  4. ML design round
+     "Design a recommendation system"
+     "Build a content moderation pipeline"
+
+  5. Behavioral
+     STAR format, tie everything to impact
+
+----------------------------------------------------
+HIGHEST-LEVERAGE ACTIONS
+----------------------------------------------------
+
+  1. Build in public
+     GitHub + brief writeups (Substack, LinkedIn)
+     FAANG recruiters search for this.
+
+  2. Reproduce a paper
+     Pick one from arXiv, implement it.
+     Signals research ability.
+
+  3. Contribute to OSS
+     Even docs/bug fixes on Hugging Face, LangChain, or PyTorch.
+
+  4. Get reps on system design
+     "Designing Machine Learning Systems" by Chip Huyen
+     is the standard reference.
+
+  5. Apply to smaller AI companies first
+     Build interview reps, then crack FAANG.
+
+----------------------------------------------------
+TIMELINE TO OCTOBER 2026
+----------------------------------------------------
+
+  May  2026  ->  Foundations + first project
+  Jun  2026  ->  Complete Phase 1 (Math + Code fundamentals)
+  Jul  2026  ->  Start Phase 2 (ML + Deep Learning)
+  Aug  2026  ->  Complete Phase 2 (Transformers + LLMs + MLOps)
+  Sep  2026  ->  Build 2 polished portfolio projects
+  Oct  2026  ->  DEADLINE — 3 projects live, interview-ready
+
+----------------------------------------------------
+FINAL NOTE
+----------------------------------------------------
+
+The gap between "can build AI things" and "gets hired at FAANG"
+is almost entirely communication of impact.
+
+Write your READMEs like a tech lead presenting to a VP.
+Every project should answer: What was the problem?
+What did you build? How did you measure success? What was
+the result?
+
+====================================================
+  DEADLINE: OCTOBER 31, 2026
+  You have 5 months. Start today.
+====================================================
