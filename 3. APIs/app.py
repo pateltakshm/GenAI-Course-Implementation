@@ -6,6 +6,7 @@ import os
 import tempfile
 import requests
 import numpy as np
+# import imageio
 from PIL import Image as PILImage
 
 st.set_page_config(page_title="Multimodal AI Explorer", page_icon="🤖", layout="wide")
@@ -170,10 +171,10 @@ with tabs[4]:
 # ── Tab 6: Text → Video ──────────────────────────────────────────────────────
 with tabs[5]:
     st.subheader("Text → Video")
-    st.caption("Model: gpt-image-1 — generates sequential frames stitched into an animated GIF")
+    st.caption("Model: dall-e-3 — generates sequential frames stitched into an animated GIF")
     st.info(
         "OpenAI doesn't yet offer native video generation, so this creates an animated GIF "
-        "from sequential gpt-image-1 frames showing scene progression."
+        "from sequential DALL-E 3 frames showing scene progression."
     )
     vid_prompt = st.text_area(
         "Describe the video/animation:", "A seed sprouting and growing into a tall tree through the seasons", height=100
@@ -182,23 +183,23 @@ with tabs[5]:
     if st.button("Generate Video", key="t2v"):
         progress = st.progress(0, "Starting...")
         try:
-            pil_frames = []
+            images = []
             for i in range(n_frames):
                 progress.progress((i) / n_frames, f"Generating frame {i+1}/{n_frames}...")
                 frame_prompt = f"{vid_prompt}, moment {i+1} of {n_frames}"
                 resp = client.images.generate(
-                    model="gpt-image-1",
+                    model="dall-e-3",
                     prompt=frame_prompt,
                     size="1024x1024",
-                    quality="low",
+                    quality="standard",
                     n=1,
                 )
-                img_bytes = base64.b64decode(resp.data[0].b64_json)
-                img = PILImage.open(io.BytesIO(img_bytes)).resize((512, 512)).convert("RGB")
-                pil_frames.append(img)
+                img_data = requests.get(resp.data[0].url).content
+                img = PILImage.open(io.BytesIO(img_data)).resize((512, 512)).convert("RGB")
+                images.append(np.array(img))
             progress.progress(1.0, "Assembling GIF...")
             buf = io.BytesIO()
-            pil_frames[0].save(buf, format="GIF", save_all=True, append_images=pil_frames[1:], duration=1500, loop=0)
+            imageio.mimsave(buf, images, format="GIF", duration=1.5, loop=0)
             gif_bytes = buf.getvalue()
             progress.empty()
             st.image(gif_bytes, caption="Generated Animation", use_container_width=True)
