@@ -1,0 +1,13 @@
+# AI / API
+openai>=1.88.0
+
+# Web app
+streamlit>=1.58.0
+
+# Image processing & video
+pillow>=12.0.0
+opencv-python-headless>=4.13.0
+
+# Utilities
+requests>=2.32.0
+numpy>=2.3.0

@@ -1,0 +1,273 @@
+import streamlit as st
+from openai import OpenAI
+import base64
+import io
+import os
+import tempfile
+import requests
+import numpy as np
+from PIL import Image as PILImage
+
+st.set_page_config(page_title="Multimodal AI Explorer", page_icon="🤖", layout="wide")
+st.title("Multimodal AI Explorer")
+st.caption("Assignment 3 — Powered by OpenAI APIs")
+
+# ── Sidebar ──────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.header("Configuration")
+    api_key = st.text_input("OpenAI API Key", type="password", placeholder="sk-...")
+    st.markdown("---")
+    st.markdown("**Models used:**")
+    st.markdown("- Text→Text: `gpt-4o-mini`")
+    st.markdown("- Text→Image: `dall-e-3`")
+    st.markdown("- Image→Text: `gpt-4o` (vision)")
+    st.markdown("- Text→Audio: `tts-1-hd`")
+    st.markdown("- Audio→Text: `whisper-1`")
+    st.markdown("- Text→Video: `dall-e-3` frames → GIF")
+    st.markdown("- Video→Text: `gpt-4o` (vision)")
+
+if not api_key:
+    st.warning("Enter your OpenAI API key in the sidebar to get started.")
+    st.stop()
+
+client = OpenAI(api_key=api_key)
+
+tabs = st.tabs([
+    "Text → Text",
+    "Text → Image",
+    "Image → Text",
+    "Text → Audio",
+    "Audio → Text",
+    "Text → Video",
+    "Video → Text",
+])
+
+# ── Tab 1: Text → Text ───────────────────────────────────────────────────────
+with tabs[0]:
+    st.subheader("Text → Text")
+    st.caption("Model: gpt-4o-mini")
+    system_msg = st.text_input("System prompt:", "You are a helpful assistant.")
+    user_msg = st.text_area("Your prompt:", "Explain quantum computing in 3 sentences.", height=120)
+    if st.button("Generate", key="t2t"):
+        with st.spinner("Thinking..."):
+            try:
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": user_msg},
+                    ],
+                )
+                st.markdown(resp.choices[0].message.content)
+            except Exception as e:
+                st.error(str(e))
+
+# ── Tab 2: Text → Image ──────────────────────────────────────────────────────
+with tabs[1]:
+    st.subheader("Text → Image")
+    st.caption("Model: gpt-image-1")
+    img_prompt = st.text_area(
+        "Describe the image:",
+        "A serene mountain lake at sunrise with snow-capped peaks reflected in still water, photorealistic",
+        height=100,
+    )
+    col1, col2 = st.columns(2)
+    size = col1.selectbox("Size:", ["1024x1024", "1536x1024", "1024x1536"])
+    quality = col2.selectbox("Quality:", ["medium", "low", "high"])
+    if st.button("Generate Image", key="t2i"):
+        with st.spinner("Generating image (~20s)..."):
+            try:
+                resp = client.images.generate(
+                    model="gpt-image-1",
+                    prompt=img_prompt,
+                    size=size,
+                    quality=quality,
+                    n=1,
+                )
+                img_bytes = base64.b64decode(resp.data[0].b64_json)
+                st.image(img_bytes, caption="Generated Image", use_container_width=True)
+                st.download_button("Download", img_bytes, "generated_image.png", "image/png")
+            except Exception as e:
+                st.error(str(e))
+
+# ── Tab 3: Image → Text ──────────────────────────────────────────────────────
+with tabs[2]:
+    st.subheader("Image → Text")
+    st.caption("Model: gpt-4o (vision)")
+    uploaded_img = st.file_uploader("Upload an image:", type=["png", "jpg", "jpeg", "webp", "gif"])
+    vision_q = st.text_input("Question about the image:", "Describe this image in detail.")
+    if uploaded_img and st.button("Analyze", key="i2t"):
+        with st.spinner("Analyzing..."):
+            try:
+                raw = uploaded_img.read()
+                ext = uploaded_img.name.rsplit(".", 1)[-1].lower()
+                mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+                b64 = base64.b64encode(raw).decode()
+                resp = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": vision_q},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                        ],
+                    }],
+                )
+                st.image(raw, caption="Uploaded image", width=400)
+                st.markdown(resp.choices[0].message.content)
+            except Exception as e:
+                st.error(str(e))
+
+# ── Tab 4: Text → Audio ──────────────────────────────────────────────────────
+with tabs[3]:
+    st.subheader("Text → Audio")
+    st.caption("Model: tts-1-hd")
+    tts_text = st.text_area(
+        "Text to speak:",
+        "Hello! This audio was generated by OpenAI's text-to-speech model. Welcome to multimodal AI!",
+        height=100,
+    )
+    voice = st.selectbox("Voice:", ["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
+    if st.button("Generate Audio", key="t2a"):
+        with st.spinner("Generating audio..."):
+            try:
+                resp = client.audio.speech.create(
+                    model="tts-1-hd",
+                    voice=voice,
+                    input=tts_text,
+                )
+                audio_bytes = resp.content
+                st.audio(audio_bytes, format="audio/mp3")
+                st.download_button("Download MP3", audio_bytes, "generated_audio.mp3", "audio/mpeg")
+            except Exception as e:
+                st.error(str(e))
+
+# ── Tab 5: Audio → Text ──────────────────────────────────────────────────────
+with tabs[4]:
+    st.subheader("Audio → Text")
+    st.caption("Model: whisper-1")
+    uploaded_audio = st.file_uploader(
+        "Upload an audio file:", type=["mp3", "wav", "m4a", "ogg", "flac", "webm"]
+    )
+    if uploaded_audio and st.button("Transcribe", key="a2t"):
+        with st.spinner("Transcribing..."):
+            try:
+                ext = uploaded_audio.name.rsplit(".", 1)[-1]
+                with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    tmp.write(uploaded_audio.read())
+                    tmp_path = tmp.name
+                with open(tmp_path, "rb") as f:
+                    transcription = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=f,
+                        response_format="text",
+                    )
+                os.unlink(tmp_path)
+                st.text_area("Transcribed text:", transcription, height=200)
+            except Exception as e:
+                st.error(str(e))
+
+# ── Tab 6: Text → Video ──────────────────────────────────────────────────────
+with tabs[5]:
+    st.subheader("Text → Video")
+    st.caption("Model: gpt-image-1 — generates sequential frames stitched into an animated GIF")
+    st.info(
+        "OpenAI doesn't yet offer native video generation, so this creates an animated GIF "
+        "from sequential gpt-image-1 frames showing scene progression."
+    )
+    vid_prompt = st.text_area(
+        "Describe the video/animation:", "A seed sprouting and growing into a tall tree through the seasons", height=100
+    )
+    n_frames = st.slider("Number of frames:", min_value=3, max_value=5, value=4)
+    if st.button("Generate Video", key="t2v"):
+        progress = st.progress(0, "Starting...")
+        try:
+            pil_frames = []
+            for i in range(n_frames):
+                progress.progress((i) / n_frames, f"Generating frame {i+1}/{n_frames}...")
+                frame_prompt = f"{vid_prompt}, moment {i+1} of {n_frames}"
+                resp = client.images.generate(
+                    model="gpt-image-1",
+                    prompt=frame_prompt,
+                    size="1024x1024",
+                    quality="low",
+                    n=1,
+                )
+                img_bytes = base64.b64decode(resp.data[0].b64_json)
+                img = PILImage.open(io.BytesIO(img_bytes)).resize((512, 512)).convert("RGB")
+                pil_frames.append(img)
+            progress.progress(1.0, "Assembling GIF...")
+            buf = io.BytesIO()
+            pil_frames[0].save(buf, format="GIF", save_all=True, append_images=pil_frames[1:], duration=1500, loop=0)
+            gif_bytes = buf.getvalue()
+            progress.empty()
+            st.image(gif_bytes, caption="Generated Animation", use_container_width=True)
+            st.download_button("Download GIF", gif_bytes, "generated_video.gif", "image/gif")
+        except Exception as e:
+            progress.empty()
+            st.error(str(e))
+
+# ── Tab 7: Video → Text ──────────────────────────────────────────────────────
+with tabs[6]:
+    st.subheader("Video → Text")
+    st.caption("Model: gpt-4o (vision) — extracts frames and analyzes them")
+    uploaded_vid = st.file_uploader("Upload a video or GIF:", type=["mp4", "avi", "mov", "gif", "webm"])
+    vid_q = st.text_input(
+        "What do you want to know?",
+        "Describe what is happening in this video and provide a brief summary.",
+    )
+    max_frames = st.slider("Frames to analyze:", 2, 6, 4)
+    if uploaded_vid and st.button("Analyze Video", key="v2t"):
+        with st.spinner("Extracting frames and analyzing..."):
+            try:
+                ext = uploaded_vid.name.rsplit(".", 1)[-1].lower()
+                frames_b64 = []
+
+                if ext == "gif":
+                    gif = PILImage.open(uploaded_vid)
+                    all_frames = []
+                    try:
+                        while True:
+                            all_frames.append(gif.copy().convert("RGB"))
+                            gif.seek(gif.tell() + 1)
+                    except EOFError:
+                        pass
+                    indices = [int(i * len(all_frames) / max_frames) for i in range(min(max_frames, len(all_frames)))]
+                    for idx in indices:
+                        buf = io.BytesIO()
+                        all_frames[idx].save(buf, format="JPEG")
+                        frames_b64.append(base64.b64encode(buf.getvalue()).decode())
+                else:
+                    import cv2
+                    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                        tmp.write(uploaded_vid.read())
+                        tmp_path = tmp.name
+                    cap = cv2.VideoCapture(tmp_path)
+                    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    interval = max(1, total // max_frames)
+                    for i in range(max_frames):
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, i * interval)
+                        ret, frame = cap.read()
+                        if ret:
+                            _, buf = cv2.imencode(".jpg", frame)
+                            frames_b64.append(base64.b64encode(buf).decode())
+                    cap.release()
+                    os.unlink(tmp_path)
+
+                content = [{
+                    "type": "text",
+                    "text": f"{vid_q}\n\nI'm showing you {len(frames_b64)} frames extracted from the video.",
+                }]
+                for b64 in frames_b64:
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                    })
+
+                resp = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": content}],
+                )
+                st.markdown(resp.choices[0].message.content)
+            except Exception as e:
+                st.error(str(e))
